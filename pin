@@ -1,0 +1,64 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+use HTTP::Tiny;
+use URI::Escape;
+use IO::Socket::SSL;
+
+my $config_file = $ENV{HOME} . '/.pinboard';
+
+my %config = map { chomp; split /\s*=\s*/ } do {
+    open my $fh, '<', $config_file or die "Can't open config";
+    <$fh>;
+};
+
+my %commands = (add => \&add);
+
+my ($command) = shift;
+die 'Usage: <command>' unless $command;
+
+my $command_sub = $commands{$command};
+die 'Unknown command' unless $command_sub;
+
+$command_sub->(@ARGV);
+
+sub add {
+    my ($url, $description) = @_;
+
+    my %query = (
+        auth_token  => $config{token},
+        url         => $url,
+        description => $description
+    );
+
+    request('posts/add', %query);
+}
+
+sub request {
+    my ($method, %params) = @_;
+
+    my $ua = HTTP::Tiny->new();
+
+    my $response = $ua->get(build_uri($method, %params));
+
+    if ($response->{success}) {
+        warn "OK\n";
+    }
+    else {
+        warn "FAILED\n";
+        use Data::Dumper;
+        warn Dumper($response);
+    }
+}
+
+sub build_uri {
+    my ($method, %params) = @_;
+
+    my $query = join '&', map {
+        join '=', map { uri_escape($_) } $_, $params{$_}
+    } keys %params;
+
+    return "https://api.pinboard.in/v1/$method?" . $query;
+}
